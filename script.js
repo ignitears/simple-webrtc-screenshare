@@ -9,8 +9,19 @@ window.onload = () => {
   const params = new URLSearchParams(window.location.search);
   const castRoom = params.get('cast');
   if (castRoom) {
-    document.getElementById('roomInput').value = castRoom;
-    startHost(castRoom); // Automatically start hosting using the QR code room!
+    const roomInput = document.getElementById('roomInput');
+    roomInput.value = castRoom;
+    roomInput.readOnly = true;
+
+    // Hide other buttons so the user doesn't get confused
+    document.getElementById('viewBtn').style.display = 'none';
+    document.getElementById('castBtn').style.display = 'none';
+
+    // Turn the Host button into a clear "Start Casting" button
+    const hostBtn = document.getElementById('hostBtn');
+    hostBtn.innerText = "Tap Here to Cast Screen";
+    
+    showNotice("Ready! Tap the button to cast to the computer.");
   }
 };
 
@@ -46,22 +57,26 @@ pc.oniceconnectionstatechange = () => {
   }
 };
 
-async function startHost(existingRoom = null) {
+async function startHost() {
   const actionButtons = document.getElementById('actionButtons');
   const roomInput = document.getElementById('roomInput');
   
   try {
-    // Ask for screen permissions
+    // Ask for screen permissions (This is now safely triggered by a physical tap!)
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     
-    // Use the QR code room if it exists, otherwise make a new one
-    activeRoom = existingRoom || Math.random().toString(36).substring(2, 8).toUpperCase();
+    // If the QR code filled the box, use that code. Otherwise, generate a new one.
+    activeRoom = roomInput.value.trim();
+    if (!activeRoom) {
+      activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+    
     isHost = true;
     roomInput.value = activeRoom;
     roomInput.readOnly = true; 
     actionButtons.style.display = 'none'; 
-    roomInput.style.marginBottom = '1rem'; // Shrinks the gap below the input
-    document.querySelector('.video-wrapper').style.marginTop = '1rem'; // Shrinks the gap above the video
+    roomInput.style.marginBottom = '1rem'; 
+    document.querySelector('.video-wrapper').style.marginTop = '1rem'; 
     
     document.getElementById('videoElement').srcObject = stream;
     document.getElementById('videoControls').style.display = 'flex';
@@ -74,7 +89,9 @@ async function startHost(existingRoom = null) {
         body: JSON.stringify({ action: 'clear', room: activeRoom }) 
       });
       showNotice("You stopped sharing.");
-      setTimeout(() => location.reload(), 1500); 
+      
+      // Safely reset the phone back to the normal homepage, removing the QR code link
+      setTimeout(() => window.location.href = window.location.href.split('?')[0], 1500); 
     };
 
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -93,7 +110,6 @@ async function startHost(existingRoom = null) {
       }
     };
   } catch (err) {
-    // Triggers if the user hits "Cancel" on the screen share prompt
     showNotice("Screen sharing cancelled.");
   }
 }
