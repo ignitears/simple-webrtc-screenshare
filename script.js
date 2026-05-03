@@ -2,14 +2,17 @@
 const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 let pc = new RTCPeerConnection(servers);
 
+let isHost = false;
+let activeRoom = "";
+
 async function startHost() {
-  const room = document.getElementById('roomInput').value;
-  if (!room) return alert("Please enter a room code!");
+  // Generate code and display it in the input box for easy copying
+  activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
+  isHost = true;
+  document.getElementById('roomInput').value = activeRoom;
   
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   document.getElementById('videoElement').srcObject = stream;
-  
-  // Show the mobile controls
   document.getElementById('videoControls').style.display = 'flex';
 
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -21,24 +24,23 @@ async function startHost() {
     if (pc.iceGatheringState === 'complete') {
       fetch(API_URL, { 
         method: 'POST', 
-        body: JSON.stringify({ type: 'offer', room: room, offer: JSON.stringify(pc.localDescription) }) 
+        body: JSON.stringify({ room: activeRoom, offer: JSON.stringify(pc.localDescription) }) 
       });
-      checkForAnswer(room);
+      checkForAnswer(activeRoom);
     }
   };
 }
 
 async function joinViewer() {
-  const room = document.getElementById('roomInput').value;
-  if (!room) return alert("Please enter a room code!");
+  activeRoom = document.getElementById('roomInput').value;
+  if (!activeRoom) return alert("Please enter a room code!");
   
   pc.ontrack = (event) => { 
     document.getElementById('videoElement').srcObject = event.streams[0]; 
-    // Show the mobile controls once the video feed connects
     document.getElementById('videoControls').style.display = 'flex';
   };
 
-  const response = await fetch(`${API_URL}?room=${room}`);
+  const response = await fetch(`${API_URL}?room=${activeRoom}`);
   const data = await response.json();
 
   if (data.offer) {
@@ -51,7 +53,7 @@ async function joinViewer() {
       if (pc.iceGatheringState === 'complete') {
          fetch(API_URL, { 
            method: 'POST', 
-           body: JSON.stringify({ type: 'answer', room: room, answer: JSON.stringify(pc.localDescription) }) 
+           body: JSON.stringify({ room: activeRoom, answer: JSON.stringify(pc.localDescription) }) 
          });
       }
     };
@@ -79,13 +81,13 @@ function toggleFullscreen() {
   if (!document.fullscreenElement) {
     if (videoObj.requestFullscreen) {
       videoObj.requestFullscreen();
-    } else if (videoObj.webkitRequestFullscreen) { /* Safari */
+    } else if (videoObj.webkitRequestFullscreen) { 
       videoObj.webkitRequestFullscreen();
     }
   } else {
     if (document.exitFullscreen) {
       document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) { /* Safari */
+    } else if (document.webkitExitFullscreen) { 
       document.webkitExitFullscreen();
     }
   }
@@ -106,3 +108,13 @@ async function togglePiP() {
     console.error("PiP Error:", error);
   }
 }
+
+// --- Cleanup System ---
+window.onbeforeunload = () => {
+  if (isHost && activeRoom) {
+    fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'clear', room: activeRoom })
+    });
+  }
+};
