@@ -4,86 +4,150 @@ let pc = new RTCPeerConnection(servers);
 let isHost = false;
 let activeRoom = "";
 
-// Detect when the connection dies for either user
-pc.oniceconnectionstatechange = () => {
-  if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-    document.getElementById('videoElement').srcObject = null;
-    document.getElementById('videoControls').style.display = 'none';
-    alert("Connection closed. The host stopped sharing.");
+// Auto-detect if someone scanned the QR code on their phone
+window.onload = () => {
+  const params = new URLSearchParams(window.location.search);
+  const castRoom = params.get('cast');
+  if (castRoom) {
+    document.getElementById('roomInput').value = castRoom;
+    startHost(castRoom); // Automatically start hosting using the QR code room!
   }
 };
 
-async function startHost() {
-  activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
-  isHost = true;
-  const roomInput = document.getElementById('roomInput');
-  roomInput.value = activeRoom;
-  roomInput.readOnly = true; 
+// Helper for Custom Popups
+function showNotice(msg) {
+  const container = document.getElementById('notification-container');
+  const toast = document.createElement('div');
+  toast.className = 'popup';
+  toast.innerText = msg;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 2000);
+}
+
+// Connection Sensor
+pc.oniceconnectionstatechange = () => {
+  const videoControls = document.getElementById('videoControls');
   
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-  document.getElementById('videoElement').srcObject = stream;
-  document.getElementById('videoControls').style.display = 'flex';
+  if (pc.iceConnectionState === 'connected') {
+    showNotice("Connection Successful!");
+    videoControls.style.display = 'flex'; 
+  }
+  
+  if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+    document.getElementById('videoElement').srcObject = null;
+    videoControls.style.display = 'none';
+    showNotice("Connection Lost.");
+    
+    // Safely refresh the page to bring buttons back and clear memory
+    setTimeout(() => location.reload(), 2000);
+  }
+};
 
-  // Listen for the native "Stop Sharing" button
-  stream.getVideoTracks()[0].onended = () => {
-    fetch(API_URL, { 
-      method: 'POST', 
-      keepalive: true,
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: 'clear', room: activeRoom }) 
-    });
-    alert("You stopped sharing.");
-    location.reload(); // Resets the page for the host
-  };
+async function startHost(existingRoom = null) {
+  const actionButtons = document.getElementById('actionButtons');
+  const roomInput = document.getElementById('roomInput');
+  
+  try {
+    // Ask for screen permissions
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    
+    // Use the QR code room if it exists, otherwise make a new one
+    activeRoom = existingRoom || Math.random().toString(36).substring(2, 8).toUpperCase();
+    isHost = true;
+    roomInput.value = activeRoom;
+    roomInput.readOnly = true; 
+    actionButtons.style.display = 'none'; 
+    roomInput.style.marginBottom = '1rem'; // Shrinks the gap below the input
+    document.querySelector('.video-wrapper').style.marginTop = '1rem'; // Shrinks the gap above the video
+    
+    document.getElementById('videoElement').srcObject = stream;
+    document.getElementById('videoControls').style.display = 'flex';
 
-  stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  pc.onicegatheringstatechange = () => {
-    if (pc.iceGatheringState === 'complete') {
+    stream.getVideoTracks()[0].onended = () => {
       fetch(API_URL, { 
         method: 'POST', 
+        keepalive: true,
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ room: activeRoom, offer: JSON.stringify(pc.localDescription) }) 
-      }).catch(err => console.error(err));
-      checkForAnswer(activeRoom);
-    }
-  };
+        body: JSON.stringify({ action: 'clear', room: activeRoom }) 
+      });
+      showNotice("You stopped sharing.");
+      setTimeout(() => location.reload(), 1500); 
+    };
+
+    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') {
+        fetch(API_URL, { 
+          method: 'POST', 
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ room: activeRoom, offer: JSON.stringify(pc.localDescription) }) 
+        }).catch(err => console.error(err));
+        checkForAnswer(activeRoom);
+      }
+    };
+  } catch (err) {
+    // Triggers if the user hits "Cancel" on the screen share prompt
+    showNotice("Screen sharing cancelled.");
+  }
 }
 
 async function joinViewer() {
   activeRoom = document.getElementById('roomInput').value;
-  if (!activeRoom) return alert("Please enter a room code!");
+  if (!activeRoom) return showNotice("Please enter a room code!");
   
+  const viewBtn = document.getElementById('viewBtn');
+  const actionButtons = document.getElementById('actionButtons');
+
+  // Anti-Spam Lock
+  viewBtn.disabled = true;
+  viewBtn.innerText = "Connecting...";
+
   pc.ontrack = (event) => { 
     const video = document.getElementById('videoElement');
     video.srcObject = event.streams[0]; 
-    video.play().catch(e => console.log("Play blocked by browser")); 
-    document.getElementById('videoControls').style.display = 'flex';
+    video.play().catch(e => console.log("Play blocked")); 
   };
 
-  const response = await fetch(`${API_URL}?room=${activeRoom}`);
-  const data = await response.json();
+  try {
+    const response = await fetch(`${API_URL}?room=${activeRoom}`);
+    const data = await response.json();
 
-  if (data.offer) {
-    await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.offer)));
-    
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    if (data.offer) {
+      // Room found! Hide the buttons and proceed
+      actionButtons.style.display = 'none';
+      roomInput.style.marginBottom = '1rem'; // Shrinks the gap below the input
+      document.querySelector('.video-wrapper').style.marginTop = '1rem'; // Shrinks the gap above the video
 
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === 'complete') {
-         fetch(API_URL, { 
-           method: 'POST', 
-           headers: { "Content-Type": "text/plain;charset=utf-8" },
-           body: JSON.stringify({ room: activeRoom, answer: JSON.stringify(pc.localDescription) }) 
-         }).catch(err => console.error(err));
-      }
-    };
-  } else {
-    alert("Room not found. Make sure the host has shared their screen first.");
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.offer)));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+           fetch(API_URL, { 
+             method: 'POST', 
+             headers: { "Content-Type": "text/plain;charset=utf-8" },
+             body: JSON.stringify({ room: activeRoom, answer: JSON.stringify(pc.localDescription) }) 
+           }).catch(err => console.error(err));
+        }
+      };
+    } else {
+      // Room not found, unlock the button so they can try again
+      showNotice("Room not found. Check the code.");
+      viewBtn.disabled = false;
+      viewBtn.innerText = "View Screen (Viewer)";
+    }
+  } catch (err) {
+    showNotice("Network error. Try again.");
+    viewBtn.disabled = false;
+    viewBtn.innerText = "View Screen (Viewer)";
   }
 }
 
@@ -115,7 +179,7 @@ async function togglePiP() {
   try {
     if (document.pictureInPictureElement) await document.exitPictureInPicture();
     else if (document.pictureInPictureEnabled) await videoObj.requestPictureInPicture();
-    else alert("Picture-in-Picture is not supported by your current browser.");
+    else showNotice("Picture-in-Picture is not supported.");
   } catch (error) { console.error("PiP Error:", error); }
 }
 
@@ -130,3 +194,60 @@ window.onbeforeunload = () => {
     });
   }
 };
+
+function prepareToReceive() {
+  const actionButtons = document.getElementById('actionButtons');
+  const roomInput = document.getElementById('roomInput');
+  
+  // 1. Generate code and hide UI
+  activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
+  roomInput.value = activeRoom;
+  roomInput.readOnly = true;
+  actionButtons.style.display = 'none';
+
+  // 2. Generate the exact URL for the phone to scan
+  const currentUrl = window.location.href.split('?')[0]; 
+  const castUrl = `${currentUrl}?cast=${activeRoom}`;
+
+  // 3. Draw the QR Code on the screen
+  const qrContainer = document.getElementById('qrcode');
+  qrContainer.style.display = 'block';
+  new QRCode(qrContainer, { text: castUrl, width: 220, height: 220 });
+
+  showNotice("Scan QR code with your phone!");
+
+  // 4. Poll the database waiting for the phone to send the video feed
+  const interval = setInterval(async () => {
+    const response = await fetch(`${API_URL}?room=${activeRoom}`);
+    const data = await response.json();
+    
+    if (data.offer) {
+      clearInterval(interval); // Stop searching, we found the phone!
+      qrContainer.style.display = 'none'; 
+      showNotice("Phone connected! Loading video...");
+
+      // Prepare the video player
+      pc.ontrack = (event) => { 
+        const video = document.getElementById('videoElement');
+        video.srcObject = event.streams[0]; 
+        video.play().catch(e => console.log("Play blocked")); 
+        document.getElementById('videoControls').style.display = 'flex';
+      };
+
+      // Connect the WebRTC Handshake
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data.offer)));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+           fetch(API_URL, { 
+             method: 'POST', 
+             headers: { "Content-Type": "text/plain;charset=utf-8" },
+             body: JSON.stringify({ room: activeRoom, answer: JSON.stringify(pc.localDescription) }) 
+           }).catch(err => console.error(err));
+        }
+      };
+    }
+  }, 3000);
+}

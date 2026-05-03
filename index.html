@@ -7,6 +7,8 @@
   
   <!-- 1. Load your styles -->
   <link rel="stylesheet" href="style.css">
+  <!-- Load QRCode library for generating QR codes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
     <body>
 
@@ -14,10 +16,15 @@
       
       <input id="roomInput" placeholder="Enter Room Code">
       
-      <div class="buttons">
-        <button onclick="startHost()">Share Screen (Host)</button>
-        <button onclick="joinViewer()">View Screen (Viewer)</button>
+      <div class="buttons" id="actionButtons">
+        <button id="hostBtn" onclick="startHost()">Share Screen (Host)</button>
+        <button id="viewBtn" onclick="joinViewer()">View Screen (Viewer)</button>
+        <!-- The new Cast button -->
+        <button id="castBtn" onclick="prepareToReceive()" style="background-color: var(--neon-purple); box-shadow: 0 8px 0 #7a12b8;">Receive from Phone</button>
       </div>
+
+      <!-- The white box where the QR code will appear -->
+      <div id="qrcode" style="display: none; background: white; padding: 20px; border-radius: 12px; margin: 0 auto; width: fit-content; margin-top: 1rem;"></div>
       
       <div class="video-wrapper">
         <video id="videoElement" autoplay playsinline muted></video>
@@ -34,6 +41,9 @@
       
       <!-- 3. Then load your main logic -->
       <script src="script.js"></script>
+    
 
+    <div id="notification-container"></div>
+    
     </body>
 </html>
