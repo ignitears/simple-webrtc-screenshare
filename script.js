@@ -4,16 +4,37 @@ let pc = new RTCPeerConnection(servers);
 let isHost = false;
 let activeRoom = "";
 
+// Detect when the connection dies for either user
+pc.oniceconnectionstatechange = () => {
+  if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+    document.getElementById('videoElement').srcObject = null;
+    document.getElementById('videoControls').style.display = 'none';
+    alert("Connection closed. The host stopped sharing.");
+  }
+};
+
 async function startHost() {
   activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
   isHost = true;
   const roomInput = document.getElementById('roomInput');
   roomInput.value = activeRoom;
-  roomInput.readOnly = true; // Locks the code so the host cannot edit it
+  roomInput.readOnly = true; 
   
   const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   document.getElementById('videoElement').srcObject = stream;
   document.getElementById('videoControls').style.display = 'flex';
+
+  // Listen for the native "Stop Sharing" button
+  stream.getVideoTracks()[0].onended = () => {
+    fetch(API_URL, { 
+      method: 'POST', 
+      keepalive: true,
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: 'clear', room: activeRoom }) 
+    });
+    alert("You stopped sharing.");
+    location.reload(); // Resets the page for the host
+  };
 
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
@@ -39,7 +60,7 @@ async function joinViewer() {
   pc.ontrack = (event) => { 
     const video = document.getElementById('videoElement');
     video.srcObject = event.streams[0]; 
-    video.play().catch(e => console.log("Play blocked by browser")); // Forces video to play
+    video.play().catch(e => console.log("Play blocked by browser")); 
     document.getElementById('videoControls').style.display = 'flex';
   };
 
@@ -78,39 +99,24 @@ function checkForAnswer(room) {
 }
 
 // --- Mobile Quality of Life Features ---
-
 function toggleFullscreen() {
   const videoObj = document.getElementById('videoElement');
-  
   if (!document.fullscreenElement) {
-    if (videoObj.requestFullscreen) {
-      videoObj.requestFullscreen();
-    } else if (videoObj.webkitRequestFullscreen) { 
-      videoObj.webkitRequestFullscreen();
-    }
+    if (videoObj.requestFullscreen) videoObj.requestFullscreen();
+    else if (videoObj.webkitRequestFullscreen) videoObj.webkitRequestFullscreen();
   } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) { 
-      document.webkitExitFullscreen();
-    }
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
   }
 }
 
 async function togglePiP() {
   const videoObj = document.getElementById('videoElement');
-  
   try {
-    if (document.pictureInPictureElement) {
-      await document.exitPictureInPicture();
-    } else if (document.pictureInPictureEnabled) {
-      await videoObj.requestPictureInPicture();
-    } else {
-      alert("Picture-in-Picture is not supported by your current browser.");
-    }
-  } catch (error) {
-    console.error("PiP Error:", error);
-  }
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else if (document.pictureInPictureEnabled) await videoObj.requestPictureInPicture();
+    else alert("Picture-in-Picture is not supported by your current browser.");
+  } catch (error) { console.error("PiP Error:", error); }
 }
 
 // --- Cleanup System ---
@@ -118,6 +124,8 @@ window.onbeforeunload = () => {
   if (isHost && activeRoom) {
     fetch(API_URL, {
       method: 'POST',
+      keepalive: true,
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: 'clear', room: activeRoom })
     });
   }
