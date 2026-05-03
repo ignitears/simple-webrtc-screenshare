@@ -8,32 +8,32 @@
   <!-- 1. Load your styles -->
   <link rel="stylesheet" href="style.css">
 </head>
-  <body>
+    <body>
 
-    <h2>Simple Screen Share</h2>
-    
-    <input id="roomInput" placeholder="Enter Room Code">
-    
-    <div class="buttons">
-      <button onclick="startHost()">Share Screen (Host)</button>
-      <button onclick="joinViewer()">View Screen (Viewer)</button>
-    </div>
-    
-    <div class="video-wrapper">
-      <video id="videoElement" autoplay playsinline></video>
+      <h2>Simple Screen Share</h2>
       
-      <!-- Mobile Quality of Life Controls (Hidden until video starts) -->
-      <div id="videoControls" class="video-controls" style="display: none;">
-        <button onclick="toggleFullscreen()" class="qol-btn">Full Screen</button>
-        <button onclick="togglePiP()" class="qol-btn">Mini Player</button>
+      <input id="roomInput" placeholder="Enter Room Code">
+      
+      <div class="buttons">
+        <button onclick="startHost()">Share Screen (Host)</button>
+        <button onclick="joinViewer()">View Screen (Viewer)</button>
       </div>
-    </div>
+      
+      <div class="video-wrapper">
+        <video id="videoElement" autoplay playsinline></video>
+        
+        <!-- Mobile Quality of Life Controls (Hidden until video starts) -->
+        <div id="videoControls" class="video-controls" style="display: none;">
+          <button onclick="toggleFullscreen()" class="qol-btn">Full Screen</button>
+          <button onclick="togglePiP()" class="qol-btn">Mini Player</button>
+        </div>
+      </div>
 
-    <!-- 2. Load the secret API URL first -->
-    <script src="config.js"></script>
-    
-    <!-- 3. Then load your main logic -->
-    <script src="script.js"></script>
+      <!-- 2. Load the secret API URL first -->
+      <script src="config.js"></script>
+      
+      <!-- 3. Then load your main logic -->
+      <script src="script.js"></script>
 
-  </body>
+    </body>
 </html>
