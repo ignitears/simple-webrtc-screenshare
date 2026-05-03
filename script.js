@@ -5,10 +5,11 @@ let isHost = false;
 let activeRoom = "";
 
 async function startHost() {
-  // Generate code and display it in the input box for easy copying
   activeRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
   isHost = true;
-  document.getElementById('roomInput').value = activeRoom;
+  const roomInput = document.getElementById('roomInput');
+  roomInput.value = activeRoom;
+  roomInput.readOnly = true; // Locks the code so the host cannot edit it
   
   const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   document.getElementById('videoElement').srcObject = stream;
@@ -23,8 +24,9 @@ async function startHost() {
     if (pc.iceGatheringState === 'complete') {
       fetch(API_URL, { 
         method: 'POST', 
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ room: activeRoom, offer: JSON.stringify(pc.localDescription) }) 
-      });
+      }).catch(err => console.error(err));
       checkForAnswer(activeRoom);
     }
   };
@@ -35,7 +37,9 @@ async function joinViewer() {
   if (!activeRoom) return alert("Please enter a room code!");
   
   pc.ontrack = (event) => { 
-    document.getElementById('videoElement').srcObject = event.streams[0]; 
+    const video = document.getElementById('videoElement');
+    video.srcObject = event.streams[0]; 
+    video.play().catch(e => console.log("Play blocked by browser")); // Forces video to play
     document.getElementById('videoControls').style.display = 'flex';
   };
 
@@ -52,8 +56,9 @@ async function joinViewer() {
       if (pc.iceGatheringState === 'complete') {
          fetch(API_URL, { 
            method: 'POST', 
+           headers: { "Content-Type": "text/plain;charset=utf-8" },
            body: JSON.stringify({ room: activeRoom, answer: JSON.stringify(pc.localDescription) }) 
-         });
+         }).catch(err => console.error(err));
       }
     };
   } else {
